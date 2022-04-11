@@ -1,0 +1,103 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: podinfo
+  namespace: as-hpa-testing
+  labels:
+    app: podinfo
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 9898
+      targetPort: 9898
+      protocol: TCP
+  selector:
+    app: podinfo
+---
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: podinfo
+  namespace: as-hpa-testing
+spec:
+  maxReplicas: 10
+  minReplicas: 1
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: podinfo
+  metrics:
+  - type: Object
+    object:
+      metric:
+        name: istio_requests_per_second
+      describedObject:
+        apiVersion: v1
+        kind: Service
+        name: podinfo
+      target:
+        type: Value
+        value: '10'
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: podinfo
+  namespace: as-hpa-testing
+  labels:
+    app: podinfo
+spec:
+  minReadySeconds: 5
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: podinfo
+  template:
+    metadata:
+      annotations:
+        prometheus.io/scrape: "true"
+      labels:
+        app: podinfo
+    spec:
+      containers:
+      - name: podinfod
+        image: quay.io/stefanprodan/podinfo:1.4.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 9898
+          name: http
+          protocol: TCP
+        command:
+        - ./podinfo
+        - --port=9898
+        - --level=info
+        livenessProbe:
+          exec:
+            command:
+            - podcli
+            - check
+            - http
+            - localhost:9898/healthz
+          initialDelaySeconds: 5
+          timeoutSeconds: 5
+        readinessProbe:
+          exec:
+            command:
+            - podcli
+            - check
+            - http
+            - localhost:9898/readyz
+          initialDelaySeconds: 5
+          timeoutSeconds: 5
+        resources:
+          limits:
+            cpu: 2000m
+            memory: 512Mi
+          requests:
+            cpu: 100m
+            memory: 64Mi

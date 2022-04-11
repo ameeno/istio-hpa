@@ -1,0 +1,35 @@
+    - seriesQuery: 'http_server_requests_seconds_count'
+      resources: 
+        overrides:
+          kubernetes_namespace:
+            resource: namespace
+          kubernetes_pod_name:
+            resource: pod
+      name:
+        matches: "^(.*)http_server_requests_seconds_count"
+        as: "http_server_requests_seconds_count"
+      metricsQuery: round(sum(irate(<<.Series>>{<<.LabelMatchers>>}[1m])),0.001)/count(count(container_memory_usage_bytes{<<.LabelMatchers>>})) by (<<.GroupBy>>))
+
+
+kube-metrics-adapter
+  annotations:
+    metric-config.object.istio-requests-total.prometheus/per-replica: "true"
+    metric-config.object.istio-requests-total.prometheus/query: |
+      round(
+          sum(
+            irate(
+              istio_requests_total{
+                destination_workload="podinfo",
+                destination_workload_namespace="as-hpa-testing",
+                reporter="destination"
+              }[1m])
+            ),
+          0.001) /
+          count(
+            count(
+              container_memory_usage_bytes{
+                namespace="as-hpa-testing",
+                pod_name=~"podinfo.*"
+              }
+            ) by (pod_name)
+          )
